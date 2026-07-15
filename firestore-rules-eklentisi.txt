@@ -1,0 +1,19 @@
+Mevcut firestore.rules dosyana, 'service cloud.firestore { match /databases/{database}/documents {' 
+blogu icinde (launcher_tickets ve faturalar ile ayni seviyede) su blogu ekle:
+
+    match /threat_logs/{logId} {
+      // Sadece yetkili adminler admin panelinden okuyabilir
+      allow read: if request.auth != null &&
+        request.auth.token.email in ['yigittr1922@gmail.com', 'firecrostnetwork@gmail.com'];
+
+      // Bot, Firebase Admin SDK (service account) ile yazdigi icin
+      // bu kurallarin disindan (server-side) yazar - client tarafindan
+      // yazma/silme tamamen kapali tutulmali:
+      allow write: if false;
+      allow delete: if false;
+    }
+
+Boylece:
+- Bot (backend/service account) => rules'i bypass ederek yazabilir (Admin SDK her zaman full erisime sahiptir)
+- Sadece senin ve ekibinin admin panel hesaplari => bu kayitlari OKUYABILIR
+- Hicbir normal kullanici / client => threat_logs'a yazamaz, silemez, okuyamaz
