@@ -6,8 +6,8 @@ if (!API_KEY || !API_KEY.startsWith('AIzaSy')) {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY);
-// MODEL DEĞİŞTİ - gemini-2.0-flash-exp
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+// MODEL: gemini-1.5-pro (daha kararlı)
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
 function isValidTCKimlik(numStr) {
   if (!/^[1-9][0-9]{10}$/.test(numStr)) return false;
