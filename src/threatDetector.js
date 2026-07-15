@@ -1,7 +1,14 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// API Key kontrolü
+const API_KEY = process.env.GEMINI_API_KEY?.trim();
+if (!API_KEY || !API_KEY.startsWith('AIzaSy')) {
+  console.error('[HATA] Geçersiz Gemini API Key!');
+}
+
+const genAI = new GoogleGenerativeAI(API_KEY);
+// Modeli güncelle - gemini-2.0-flash-exp kullan
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
 /**
  * Gecerli bir T.C. Kimlik No mu diye resmi algoritmayla dogrular.
