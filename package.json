@@ -1,0 +1,20 @@
+{
+  "name": "hexages-guard-bot",
+  "version": "1.0.0",
+  "description": "Hexages Games Guvenlik Sistemi - tehlikeli mesaj tespit botu (TC kimlik, adres, olum tehdidi). Kufur filtresi degildir.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy-commands": "node src/deploy-commands.js"
+  },
+  "keywords": ["discord", "security", "moderation"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "firebase-admin": "^12.7.0",
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.5"
+  }
+}
