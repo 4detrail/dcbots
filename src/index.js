@@ -6,7 +6,7 @@ const {
   EmbedBuilder,
   PermissionFlagsBits,
 } = require('discord.js');
-const { analyzeMessage } = require('./threatDetector');
+const { analyzeMessage, quickPiiScan, localHeuristicScan } = require('./threatDetector');
 const { logThreat } = require('./firebaseLogger');
 const { getAdminChannel, setAdminChannel } = require('./guildConfig');
 const { startKeepAliveServer } = require('./keepAlive');
@@ -80,10 +80,14 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// --- Mesaj Dinleme ---
-client.on('messageCreate', async (message) => {
-  // DEBUG - Hangi mesajlar geldiğini görmek için
-  console.log(`[DEBUG] Mesaj alındı: ${message.author.tag} -> ${message.content ? message.content.substring(0, 50) : '(boş)'}`);
+// --- Mesaj Tarama Mantığı ---
+// Not: Bu fonksiyon herhangi bir kanal filtresi uygulamaz; botun görebildiği
+// TÜM metin kanallarında ve thread'lerde çalışır (DM ve bot mesajları hariç).
+// "kanal-ayarla" komutu sadece uyarıların GÖNDERİLECEĞİ admin kanalını seçer,
+// hangi kanalların TARANACAĞINI kısıtlamaz. Bir kanalın taranmaması isteniyorsa
+// botun o kanaldaki "Kanalı Görüntüle" yetkisini Discord üzerinden kapatmak gerekir.
+async function scanMessage(message, { isEdit = false } = {}) {
+  console.log(`[DEBUG] Mesaj alındı${isEdit ? ' (düzenlendi)' : ''}: ${message.author.tag} -> ${message.content ? message.content.substring(0, 50) : '(boş)'} [#${message.channel?.name || message.channel?.id}]`);
 
   try {
     if (message.author.bot || !message.guild) {
@@ -102,8 +106,15 @@ client.on('messageCreate', async (message) => {
       analysis = await analyzeMessage(message.content);
       console.log(`[DEBUG] Analiz sonucu:`, analysis);
     } catch (aiErr) {
-      console.log('[AI] Gemini hatası, mesaj güvenli kabul edildi:', aiErr.message);
-      return;
+      // analyzeMessage normalde kendi icinde hatalari yakalayip yerel yedek
+      // taramaya duser; buraya dusmesi beklenmeyen bir durumdur. Yine de
+      // mesaji sessizce "guvenli" saymak yerine yerel kontrolleri calistiriyoruz.
+      console.error('[AI] Beklenmeyen analiz hatasi, yerel yedek kontrole geciliyor:', aiErr.message);
+      const quickScan = quickPiiScan(message.content);
+      const heuristic = localHeuristicScan(message.content);
+      analysis = quickScan.hasTC
+        ? { isDangerous: true, type: 'PII_LEAK', reasoning: 'Gecerli T.C. Kimlik No tespit edildi (yedek kontrol).' }
+        : heuristic;
     }
     
     if (!analysis.isDangerous) {
@@ -193,6 +204,23 @@ client.on('messageCreate', async (message) => {
   } catch (err) {
     console.error('[HATA] Mesaj işleme hatası:', err);
   }
+}
+
+client.on('messageCreate', (message) => {
+  scanMessage(message);
+});
+
+// Mesaj düzenlendiğinde de tara: biri tehlikeli içeriği sonradan mesaja
+// ekleyebilir (ör. önce zararsız mesaj atıp sonra TC kimlik/tehdit eklemek).
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  try {
+    if (newMessage.partial) newMessage = await newMessage.fetch();
+  } catch (err) {
+    console.error('[HATA] Düzenlenen mesaj alınamadı:', err.message);
+    return;
+  }
+  if (oldMessage.content === newMessage.content) return; // içerik değişmediyse atla (embed/reaction güncellemesi vb.)
+  scanMessage(newMessage, { isEdit: true });
 });
 
 client.on('guildCreate', async (guild) => {
