@@ -1,39 +1,26 @@
-const admin = require('firebase-admin');
+// firebaseLogger.js - YENİ VERSİYON
+const { initializeApp } = require('firebase/app');
+const { getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore');
 
-let db = null;
+// Firebase config'i doğrudan koda ekle (veya .env'den al)
+const firebaseConfig = {
+  apiKey: "AIzaSyAroBTexiXeaJGYqMiIIM5POdN2JUuigvo",
+  authDomain: "hexagesgames-f8fe2.firebaseapp.com",
+  projectId: "hexagesgames-f8fe2",
+  storageBucket: "hexagesgames-f8fe2.firebasestorage.app",
+  messagingSenderId: "469976981538",
+  appId: "1:469976981538:web:c5b49c15b0206c7fb76a7b",
+  measurementId: "G-6E33GJ0ZB0"
+};
 
-function initFirebase() {
-  if (db) return db;
+// Firebase'i başlat
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    throw new Error(
-      'FIREBASE_SERVICE_ACCOUNT_JSON tanimli degil. .env dosyani kontrol et.'
-    );
-  }
-
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    projectId: process.env.FIREBASE_PROJECT_ID,
-  });
-
-  db = admin.firestore();
-  return db;
-}
+console.log('[Firebase] Client SDK ile bağlantı kuruldu.');
 
 /**
- * Tehlikeli olarak isaretlenen bir mesaji Firestore'daki
- * 'threat_logs' koleksiyonuna kaydeder. Bu koleksiyon SADECE
- * admin panelinde, yetkili emailler tarafindan okunmalidir.
- *
- * Onerilen firestore.rules eklentisi (mevcut kurallarina ekle):
- *
- * match /threat_logs/{logId} {
- *   allow read: if request.auth != null &&
- *     request.auth.token.email in ['yigittr1922@gmail.com', 'firecrostnetwork@gmail.com'];
- *   allow write: if false; // sadece backend (service account) yazabilir
- * }
+ * Tehlikeli mesajı Firestore'a kaydet (otomatik koleksiyon oluşur)
  */
 async function logThreat({
   guildId,
@@ -50,27 +37,33 @@ async function logThreat({
   joinedServerAt,
   messageTimestamp,
 }) {
-  const firestore = initFirebase();
+  try {
+    console.log(`[Firestore] Tehdit kaydediliyor: ${guildName} (${guildId})`);
+    
+    const docRef = await addDoc(collection(db, 'threat_logs'), {
+      guildId,
+      guildName,
+      channelId,
+      channelName,
+      authorId,
+      authorUsername,
+      authorTag,
+      messageContent,
+      detectionType,
+      detectionReasoning,
+      accountCreatedAt,
+      joinedServerAt,
+      messageTimestamp,
+      loggedAt: serverTimestamp(),
+      status: 'new',
+    });
 
-  const docRef = await firestore.collection('threat_logs').add({
-    guildId,
-    guildName,
-    channelId,
-    channelName,
-    authorId,
-    authorUsername,
-    authorTag,
-    messageContent,
-    detectionType, // 'DEATH_THREAT' | 'PII_LEAK' | 'BOTH'
-    detectionReasoning,
-    accountCreatedAt,
-    joinedServerAt,
-    messageTimestamp,
-    loggedAt: admin.firestore.FieldValue.serverTimestamp(),
-    status: 'new', // admin panelinde 'reviewed' / 'reported_to_authorities' olarak guncellenebilir
-  });
-
-  return docRef.id;
+    console.log(`[Firestore] Kayıt oluşturuldu: ${docRef.id}`);
+    return docRef.id;
+  } catch (err) {
+    console.error('[Firestore] Kayıt hatası:', err);
+    throw err;
+  }
 }
 
-module.exports = { initFirebase, logThreat };
+module.exports = { logThreat };
