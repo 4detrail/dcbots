@@ -225,6 +225,51 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 
 client.on('guildCreate', async (guild) => {
   console.log(`[Sunucu] Eklendi: ${guild.name} (${guild.id})`);
+
+  try {
+    const owner = await guild.fetchOwner();
+
+    const welcomeEmbed = new EmbedBuilder()
+      .setColor(0xE02424)
+      .setTitle('🛡️ Hexages Games Güvenlik Botu')
+      .setDescription(
+        `Merhaba **${owner.user.username}**! Bot **${guild.name}** sunucusuna başarıyla eklendi.\n\n` +
+        `Botun çalışabilmesi için güvenlik bildirimlerinin gönderileceği **admin kanalını** ayarlamanız gerekiyor.`
+      )
+      .addFields(
+        {
+          name: '📌 Kurulum Adımı',
+          value:
+            'Sunucunuzda aşağıdaki slash komutunu çalıştırın:\n' +
+            '```\n/guvenlik-ayarla kanal-ayarla kanal:#kanal-adı\n```\n' +
+            '`#kanal-adı` yerine bildirimlerin gönderileceği kanalı seçin.',
+          inline: false,
+        },
+        {
+          name: '⚙️ Mevcut Komutlar',
+          value:
+            '`/guvenlik-ayarla kanal-ayarla` — Admin kanalını ayarlar\n' +
+            '`/guvenlik-ayarla kanal-goster` — Mevcut kanalı gösterir',
+          inline: false,
+        },
+        {
+          name: '🔍 Bot Ne Yapar?',
+          value:
+            '• Sunucudaki tüm mesajları AI ile tarar\n' +
+            '• Ölüm tehditleri ve kişisel bilgi ifşalarını tespit eder\n' +
+            '• Tehlikeli mesajları otomatik siler\n' +
+            '• Sizi admin kanalı üzerinden bildirir',
+          inline: false,
+        }
+      )
+      .setFooter({ text: 'Hexages Games Güvenlik Sistemi' })
+      .setTimestamp();
+
+    await owner.user.send({ embeds: [welcomeEmbed] });
+    console.log(`[Sunucu] Kurucuya DM gönderildi: ${owner.user.tag}`);
+  } catch (err) {
+    console.error(`[Sunucu] Kurucuya DM gönderilemedi:`, err.message);
+  }
 });
 
 process.on('unhandledRejection', (err) => console.error('[Kritik]', err));
