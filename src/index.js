@@ -82,24 +82,42 @@ client.on('interactionCreate', async (interaction) => {
 
 // --- Mesaj Dinleme ---
 client.on('messageCreate', async (message) => {
+  // DEBUG - Hangi mesajlar geldiğini görmek için
+  console.log(`[DEBUG] Mesaj alındı: ${message.author.tag} -> ${message.content ? message.content.substring(0, 50) : '(boş)'}`);
+
   try {
-    if (message.author.bot || !message.guild) return;
-    if (!message.content || message.content.trim().length === 0) return;
+    if (message.author.bot || !message.guild) {
+      console.log('[DEBUG] Bot mesajı veya DM, atlanıyor');
+      return;
+    }
+    if (!message.content || message.content.trim().length === 0) {
+      console.log('[DEBUG] Boş mesaj, atlanıyor');
+      return;
+    }
+
+    console.log(`[DEBUG] Analiz ediliyor: ${message.content.substring(0, 50)}...`);
 
     let analysis;
     try {
       analysis = await analyzeMessage(message.content);
+      console.log(`[DEBUG] Analiz sonucu:`, analysis);
     } catch (aiErr) {
-      console.log('[AI] Gemini hatası, mesaj güvenli kabul edildi');
+      console.log('[AI] Gemini hatası, mesaj güvenli kabul edildi:', aiErr.message);
       return;
     }
     
-    if (!analysis.isDangerous) return;
+    if (!analysis.isDangerous) {
+      console.log('[DEBUG] Güvenli mesaj, atlanıyor');
+      return;
+    }
+
+    console.log('[DEBUG] TEHLİKELİ MESAJ TESPİT EDİLDİ!');
 
     const author = message.author;
     const member = message.member;
     const guild = message.guild;
 
+    // 1) Firestore veritabanına kanıt kaydı
     let logId = null;
     try {
       logId = await logThreat({
@@ -117,18 +135,22 @@ client.on('messageCreate', async (message) => {
         joinedServerAt: member?.joinedAt ? member.joinedAt.toISOString() : null,
         messageTimestamp: message.createdAt.toISOString(),
       });
+      console.log(`[DEBUG] Firestore kayıt ID: ${logId}`);
     } catch (logErr) {
       console.error('[Firestore] Kayıt hatası:', logErr);
     }
 
+    // 2) Mesajı sil
     let deleted = false;
     try {
       await message.delete();
       deleted = true;
+      console.log('[DEBUG] Mesaj silindi');
     } catch (delErr) {
       console.error('[Silme] Yetki yok:', delErr.message);
     }
 
+    // 3) Admin kanalını bul
     const adminChannelId = await getAdminChannel(guild.id);
     if (!adminChannelId) {
       console.log(`[${guild.name}] Admin kanalı ayarlanmamış!`);
@@ -166,8 +188,10 @@ client.on('messageCreate', async (message) => {
       content: `<@${guild.ownerId}> Tehdit tespit edildi!`,
       embeds: [embed],
     });
+    
+    console.log('[DEBUG] Admin kanalına bildirim gönderildi');
   } catch (err) {
-    console.error('[HATA]', err);
+    console.error('[HATA] Mesaj işleme hatası:', err);
   }
 });
 
