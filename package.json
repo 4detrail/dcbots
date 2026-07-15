@@ -6,13 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "deploy-commands": "node src/deploy-commands.js",
-    "postinstall": "npm run deploy-commands"
+    "deploy-commands": "node src/deploy-commands.js"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
     "firebase": "^10.13.0",
-    "firebase-admin": "^12.7.0",
     "@google/generative-ai": "^0.21.0",
     "dotenv": "^16.4.5"
   }
