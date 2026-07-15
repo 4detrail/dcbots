@@ -1,8 +1,6 @@
-// firebaseLogger.js - TAMAMEN YENİ
 const { initializeApp } = require('firebase/app');
 const { getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore');
 
-// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAroBTexiXeaJGYqMiIIM5POdN2JUuigvo",
   authDomain: "hexagesgames-f8fe2.firebaseapp.com",
@@ -13,59 +11,34 @@ const firebaseConfig = {
   measurementId: "G-6E33GJ0ZB0"
 };
 
-// Firebase'i başlat
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-console.log('[Firebase] Client SDK ile bağlantı kuruldu.');
+console.log('[Firebase] Bağlantı kuruldu.');
 
-// db'yi export et (guildConfig.js için)
-module.exports.db = db;
-
-/**
- * Tehlikeli mesajı Firestore'a kaydet
- */
-async function logThreat({
-  guildId,
-  guildName,
-  channelId,
-  channelName,
-  authorId,
-  authorUsername,
-  authorTag,
-  messageContent,
-  detectionType,
-  detectionReasoning,
-  accountCreatedAt,
-  joinedServerAt,
-  messageTimestamp,
-}) {
+async function logThreat(data) {
   try {
-    console.log(`[Firestore] Tehdit kaydediliyor: ${guildName} (${guildId})`);
-    
-    // collection'ı doğru kullan
     const docRef = await addDoc(collection(db, 'threat_logs'), {
-      guildId,
-      guildName,
-      channelId,
-      channelName,
-      authorId,
-      authorUsername,
-      authorTag,
-      messageContent,
-      detectionType,
-      detectionReasoning,
-      accountCreatedAt,
-      joinedServerAt,
-      messageTimestamp,
+      guildId: data.guildId,
+      guildName: data.guildName,
+      channelId: data.channelId,
+      channelName: data.channelName,
+      authorId: data.authorId,
+      authorUsername: data.authorUsername,
+      authorTag: data.authorTag,
+      messageContent: data.messageContent,
+      detectionType: data.detectionType,
+      detectionReasoning: data.detectionReasoning,
+      accountCreatedAt: data.accountCreatedAt,
+      joinedServerAt: data.joinedServerAt,
+      messageTimestamp: data.messageTimestamp,
       loggedAt: serverTimestamp(),
       status: 'new',
     });
-
-    console.log(`[Firestore] Kayıt oluşturuldu: ${docRef.id}`);
+    console.log(`[Firestore] Kayıt: ${docRef.id}`);
     return docRef.id;
   } catch (err) {
-    console.error('[Firestore] Kayıt hatası:', err);
+    console.error('[Firestore] Hata:', err);
     throw err;
   }
 }
