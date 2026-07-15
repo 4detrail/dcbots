@@ -1,13 +1,14 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 const API_KEY = process.env.GEMINI_API_KEY?.trim();
 if (!API_KEY || !API_KEY.startsWith('AIzaSy')) {
   console.error('[HATA] Geçersiz Gemini API Key!');
 }
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-// MODEL: gemini-1.5-pro (daha kararlı)
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+// MODEL: gemini-flash-lite-latest — Google'ın otomatik güncellenen alias'i.
+// gemini-1.5-pro ve tum 1.5 modelleri Google tarafindan kapatildi (404 hatasinin sebebi buydu).
+const MODEL_NAME = 'gemini-flash-lite-latest';
 
 function isValidTCKimlik(numStr) {
   if (!/^[1-9][0-9]{10}$/.test(numStr)) return false;
@@ -29,6 +30,46 @@ function findTCKimlikMatches(text) {
 function quickPiiScan(text) {
   const tcMatches = findTCKimlikMatches(text);
   return { hasTC: tcMatches.length > 0, tcMatches };
+}
+
+// --- Yerel yedek tespit (AI tamamen cevapsiz kalirsa devreye girer) ---
+// AI cagrisi basarisiz olursa mesajin "guvenli" sayilmasi guvenlik acigidir;
+// bu yuzden en azindan acik olum/siddet tehdidi kaliplarini yerel olarak yakalariz.
+const LOCAL_THREAT_PATTERNS = [
+  /seni?\s+(gebert|öldür|oldur|katled)/i,
+  /(canını|canini|hayatını|hayatini)\s+alacağım/i,
+  /(seni|onu|sizi)\s+bulup\s+(öldür|oldur|geber)/i,
+  /adresini\s+(bulacağım|bulup)/i,
+  /kafanı\s+(kopar|patlat)/i,
+  /gebereceksin/i,
+];
+
+function localHeuristicScan(text) {
+  const hit = LOCAL_THREAT_PATTERNS.some((re) => re.test(text));
+  return hit
+    ? { isDangerous: true, type: 'DEATH_THREAT', reasoning: 'Yerel kalip eslesmesi (AI kullanilamadigi icin yedek kontrol).' }
+    : { isDangerous: false, type: 'NONE', reasoning: 'AI kullanilamadi, yerel kontrol de eslesme bulamadi.' };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function callGeminiWithRetry(params, retries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err) {
+      lastErr = err;
+      const status = err?.status || err?.error?.code;
+      // 400/401/403/404 gibi kalici hatalarda tekrar denemenin anlami yok.
+      const retryable = !status || status === 429 || status >= 500;
+      if (!retryable || attempt === retries) break;
+      await sleep(300 * (attempt + 1));
+    }
+  }
+  throw lastErr;
 }
 
 async function classifyMessage(text, quickScan) {
@@ -53,25 +94,35 @@ Yanitini SADECE JSON formatinda ver:
     ? `Mesaj: "${text}"\nTC Kimlik bulundu: ${quickScan.tcMatches.join(', ')}`
     : `Mesaj: "${text}"`;
 
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: userContent }] }],
-    systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0,
-      maxOutputTokens: 200,
-    },
-  });
+  let rawText;
+  try {
+    const result = await callGeminiWithRetry({
+      model: MODEL_NAME,
+      contents: [{ role: 'user', parts: [{ text: userContent }] }],
+      config: {
+        systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
+        responseMimeType: 'application/json',
+        temperature: 0,
+        maxOutputTokens: 200,
+      },
+    });
+    rawText = result.text;
+  } catch (err) {
+    console.error('[AI] Gemini hatasi (yeniden denemeler tukendi), yerel yedek kontrole geciliyor:', err.message || err);
+    return localHeuristicScan(text);
+  }
 
-  const rawText = result.response.text();
-  if (!rawText) return { isDangerous: false, type: 'NONE', reasoning: 'AI yaniti yok.' };
+  if (!rawText) {
+    console.error('[AI] Gemini bos yanit dondu, yerel yedek kontrole geciliyor.');
+    return localHeuristicScan(text);
+  }
 
   try {
     const cleaned = rawText.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (err) {
-    console.error('Parse hatasi:', rawText);
-    return { isDangerous: false, type: 'NONE', reasoning: 'Parse hatasi.' };
+    console.error('Parse hatasi, yerel yedek kontrole geciliyor:', rawText);
+    return localHeuristicScan(text);
   }
 }
 
@@ -89,4 +140,4 @@ async function analyzeMessage(text) {
   return result;
 }
 
-module.exports = { analyzeMessage, isValidTCKimlik, findTCKimlikMatches };
+module.exports = { analyzeMessage, isValidTCKimlik, findTCKimlikMatches, quickPiiScan, localHeuristicScan };
