@@ -11,25 +11,29 @@ const { logThreat } = require('./firebaseLogger');
 const { getAdminChannel, setAdminChannel } = require('./guildConfig');
 const { startKeepAliveServer } = require('./keepAlive');
 
-// UptimeRobot'un ping atabilmesi icin basit bir HTTP sunucusu baslat.
-// Bu, botu Render gibi ucretsiz platformlarda "uyanik" tutar.
+// UptimeRobot entegrasyonu için HTTP sunucusunu başlat
 startKeepAliveServer();
 
-// Artik ADMIN_CHANNEL_ID / SERVER_OWNER_ID .env'de YOK - her sunucu kendi
-// admin kanalini /guvenlik-ayarla komutuyla ayarliyor, sunucu sahibi de
-// Discord API'den otomatik aliniyor (guild.ownerId).
+// Zorunlu çevre değişkenleri listesi
 const REQUIRED_ENV = [
   'DISCORD_TOKEN',
   'GEMINI_API_KEY',
   'FIREBASE_SERVICE_ACCOUNT_JSON',
   'FIREBASE_PROJECT_ID',
 ];
+
+// Başlatma öncesi Environment durum kontrolü
+console.log('[Sistem] Çevre değişkenleri doğrulanıyor...');
 for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    console.error(`HATA: .env dosyanda ${key} eksik. Bot baslatilamiyor.`);
+  if (!process.env[key] || process.env[key].trim().length === 0) {
+    console.error(`[HATA] Render paneline eklediğin "${key}" değişkeni eksik veya boş!`);
     process.exit(1);
   }
 }
+
+// Token değerini garantiye almak için temizleme işlemi (.trim())
+const CLEAN_TOKEN = process.env.DISCORD_TOKEN.trim();
+console.log(`[Sistem] Token başarıyla yüklendi. Karakter uzunluğu: ${CLEAN_TOKEN.length}`);
 
 const client = new Client({
   intents: [
@@ -42,19 +46,18 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`[Hexages Games Guvenlik Sistemi] ${client.user.tag} olarak baglandi.`);
-  console.log(`${client.guilds.cache.size} sunucuda aktif. Cok-sunuculu mod (her sunucu kendi admin kanalini ayarlar).`);
+  console.log(`[Hexages Games Guvenlik Sistemi] ${client.user.tag} olarak başarıyla bağlandı!`);
+  console.log(`[Sistem] ${client.guilds.cache.size} sunucuda aktif koruma devrede.`);
 });
 
-// --- Slash komutlari: her sunucu kendi admin kanalini ayarlar ---
+// --- Slash komutları: Yönetici kanal ayarları ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'guvenlik-ayarla') return;
 
-  // Ekstra guvenlik: sadece sunucuyu yonetme yetkisi olanlar kullanabilir
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
     return interaction.reply({
-      content: 'Bu komutu kullanmak icin "Sunucuyu Yonet" yetkisine sahip olman gerekiyor.',
+      content: 'Bu komutu kullanmak için "Sunucuyu Yönet" yetkisine sahip olman gerekiyor.',
       ephemeral: true,
     });
   }
@@ -85,23 +88,20 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// --- Mesaj Dinleme ve Filtreleme Motoru ---
 client.on('messageCreate', async (message) => {
   try {
-    // Botlarin kendi mesajlarini ve DM'leri atla
-    if (message.author.bot) return;
-    if (!message.guild) return;
+    if (message.author.bot || !message.guild) return;
     if (!message.content || message.content.trim().length === 0) return;
 
     const analysis = await analyzeMessage(message.content);
-
     if (!analysis.isDangerous) return;
 
-    // --- Tehlikeli mesaj tespit edildi ---
     const author = message.author;
     const member = message.member;
     const guild = message.guild;
 
-    // 1) Once Firestore admin paneline kaydet (mesaj silinmeden ONCE kanit olarak)
+    // 1) Firestore veritabanına kanıt kaydı gönderme
     let logId = null;
     try {
       logId = await logThreat({
@@ -120,39 +120,32 @@ client.on('messageCreate', async (message) => {
         messageTimestamp: message.createdAt.toISOString(),
       });
     } catch (logErr) {
-      console.error('Firestore loglama hatasi:', logErr);
-      // Loglama basarisiz olsa bile guvenlik icin mesaji silmeye devam et
+      console.error('[Firestore Hatası] Kayıt işlenemedi:', logErr);
     }
 
-    // 2) Discord'da mesaji sil
+    // 2) Zararlı içeriğe sahip mesajı imha etme
     let deleted = false;
     try {
       await message.delete();
       deleted = true;
     } catch (delErr) {
-      console.error('Mesaj silinemedi (yetki eksik olabilir):', delErr.message);
+      console.error('[Yetki Hatası] Mesaj silinemedi:', delErr.message);
     }
 
-    // 3) Bu sunucunun admin kanalini bul (her sunucu kendi ayarini yapar)
+    // 3) Sunucuya ait log kanalı sorgusu
     const adminChannelId = await getAdminChannel(guild.id);
-
     if (!adminChannelId) {
-      console.error(
-        `[${guild.name}] admin kanali ayarlanmamis. Yetkili birinin "/guvenlik-ayarla kanal-ayarla" calistirmasi gerekiyor.`
-      );
+      console.error(`[${guild.name}] için admin kanalı ayarlanmamış! Yapılandırma gerekiyor.`);
       return;
     }
 
     const adminChannel = await client.channels.fetch(adminChannelId).catch(() => null);
-
     if (!adminChannel) {
-      console.error(`[${guild.name}] admin kanali (${adminChannelId}) bulunamadi veya bot goremiyor.`);
+      console.error(`[${guild.name}] belirtilen admin kanalı (${adminChannelId}) erişilemez durumda.`);
       return;
     }
 
-    // Sunucu sahibi otomatik olarak Discord API'den alinir - config gerekmez
     const ownerId = guild.ownerId;
-
     const typeLabel =
       analysis.type === 'DEATH_THREAT'
         ? 'Ölüm / Şiddet Tehdidi'
@@ -185,13 +178,13 @@ client.on('messageCreate', async (message) => {
       embeds: [embed],
     });
   } catch (err) {
-    console.error('messageCreate isleme hatasi:', err);
+    console.error('[HATA] Mesaj işleme sürecinde kritik hata:', err);
   }
 });
 
-// Bot yeni bir sunucuya eklendiginde bilgilendirme mesaji
+// Yeni sunucuya eklenme bildirimi
 client.on('guildCreate', async (guild) => {
-  console.log(`Yeni sunucu: ${guild.name} (${guild.id})`);
+  console.log(`[Sunucu] Yeni katılım sağlandı: ${guild.name} (${guild.id})`);
   try {
     const owner = await guild.fetchOwner();
     await owner.send(
@@ -199,19 +192,20 @@ client.on('guildCreate', async (guild) => {
       `Aktif olması için sunucuda bir yetkilinin şu komutu çalıştırması gerekiyor:\n` +
       `\`/guvenlik-ayarla kanal-ayarla\` — tehlikeli mesajların bildirileceği özel admin kanalını seçmek için.`
     ).catch(() => {
-      console.log(`${owner.user.tag} kullanicisina DM gonderilemedi (DM'ler kapali olabilir).`);
+      console.log(`[Sistem] ${owner.user.tag} kullanıcısının DM kutusu kapalı, bilgilendirme iletilemedi.`);
     });
   } catch (err) {
-    console.error('guildCreate bilgilendirme hatasi:', err);
+    console.error('[HATA] Sunucu eklenme bildirimi gönderilemedi:', err);
   }
 });
 
-// Beklenmedik hatalarin botu tamamen dusurmesini engelle (7/24 calisma icin)
+// Küresel çökme önleyiciler
 process.on('unhandledRejection', (err) => {
-  console.error('Yakalanmamis Promise hatasi:', err);
+  console.error('[Kritik Hata] Yakalanmamış Promise Reddi:', err);
 });
 process.on('uncaughtException', (err) => {
-  console.error('Yakalanmamis istisna:', err);
+  console.error('[Kritik Hata] Yakalanmamış İstisna:', err);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Temizlenmiş token ile bağlantı açılışı
+client.login(CLEAN_TOKEN);
