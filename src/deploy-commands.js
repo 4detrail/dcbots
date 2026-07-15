@@ -5,41 +5,33 @@ const commands = [
   new SlashCommandBuilder()
     .setName('guvenlik-ayarla')
     .setDescription('Hexages Games Güvenlik Sistemi ayarları')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // sadece sunucuyu yonetme yetkisi olanlar
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub
         .setName('kanal-ayarla')
-        .setDescription('Tehlikeli mesajların bildirileceği özel admin kanalını ayarla')
+        .setDescription('Admin kanalını ayarla')
         .addChannelOption((opt) =>
-          opt
-            .setName('kanal')
-            .setDescription('Sadece adminlerin gördüğü bir kanal seç')
-            .setRequired(true)
+          opt.setName('kanal').setDescription('Kanal seç').setRequired(true)
         )
     )
     .addSubcommand((sub) =>
-      sub.setName('kanal-goster').setDescription('Şu anki admin kanal ayarını göster')
+      sub.setName('kanal-goster').setDescription('Mevcut admin kanalını göster')
     ),
-]
-  .map((cmd) => cmd.toJSON());
+].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    if (!process.env.CLIENT_ID) {
-      console.error('HATA: .env dosyasinda CLIENT_ID eksik (Developer Portal > Genel Bilgi > Uygulama ID\'si).');
+    const clientId = process.env.CLIENT_ID;
+    if (!clientId) {
+      console.error('HATA: CLIENT_ID eksik!');
       process.exit(1);
     }
-
-    console.log('Slash komutlari kaydediliyor (global - tum sunucularda birkaç dakika icinde gorunur)...');
-
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
-      body: commands,
-    });
-
-    console.log('Slash komutlari basariyla kaydedildi.');
+    console.log('Slash komutları kaydediliyor...');
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    console.log('✅ Slash komutları kaydedildi!');
   } catch (err) {
-    console.error('Komut kaydi hatasi:', err);
+    console.error('❌ Hata:', err);
   }
 })();
