@@ -1,8 +1,8 @@
-// firebaseLogger.js - YENİ VERSİYON
+// firebaseLogger.js - TAMAMEN YENİ
 const { initializeApp } = require('firebase/app');
 const { getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore');
 
-// Firebase config'i doğrudan koda ekle (veya .env'den al)
+// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAroBTexiXeaJGYqMiIIM5POdN2JUuigvo",
   authDomain: "hexagesgames-f8fe2.firebaseapp.com",
@@ -19,8 +19,11 @@ const db = getFirestore(app);
 
 console.log('[Firebase] Client SDK ile bağlantı kuruldu.');
 
+// db'yi export et (guildConfig.js için)
+module.exports.db = db;
+
 /**
- * Tehlikeli mesajı Firestore'a kaydet (otomatik koleksiyon oluşur)
+ * Tehlikeli mesajı Firestore'a kaydet
  */
 async function logThreat({
   guildId,
@@ -40,6 +43,7 @@ async function logThreat({
   try {
     console.log(`[Firestore] Tehdit kaydediliyor: ${guildName} (${guildId})`);
     
+    // collection'ı doğru kullan
     const docRef = await addDoc(collection(db, 'threat_logs'), {
       guildId,
       guildName,
@@ -66,4 +70,4 @@ async function logThreat({
   }
 }
 
-module.exports = { logThreat };
+module.exports = { logThreat, db };
